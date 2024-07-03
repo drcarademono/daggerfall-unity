@@ -25,11 +25,11 @@ namespace DaggerfallWorkshop.Game.Utility
     {
         #region Fields
 
-        const string nameGenFilename = "NameGen";
-        const string textString = "Text";
-        const string txtExt = ".txt";
+        protected const string nameGenFilename = "NameGen";
+        protected const string textString = "Text";
+        protected const string txtExt = ".txt";
 
-        Dictionary<BankTypes, NameBank> bankDict = null;
+        protected Dictionary<BankTypes, NameBank> bankDict = null;
 
         #endregion
 
@@ -89,7 +89,7 @@ namespace DaggerfallWorkshop.Game.Utility
         /// Supports Breton, Redguard, Nord, DarkElf, HighElf, WoodElf, Khajiit, Imperial.
         /// All other types return empty string.
         /// </summary>
-        public string FullName(BankTypes type, Genders gender)
+        public virtual string FullName(BankTypes type, Genders gender)
         {
             // Get parts
             string firstName = FirstName(type, gender);
@@ -107,7 +107,7 @@ namespace DaggerfallWorkshop.Game.Utility
         /// Gets random first name for an NPC.
         /// Supports Breton, Redguard, Nord, DarkElf, HighElf, WoodElf, Khajiit, Imperial.
         /// </summary>
-        public string FirstName(BankTypes type, Genders gender)
+        public virtual string FirstName(BankTypes type, Genders gender)
         {
             // Bank dictionary must be ready
             if (bankDict == null)
@@ -140,7 +140,7 @@ namespace DaggerfallWorkshop.Game.Utility
         /// Gets random surname for an NPC.
         /// Supports Breton, Nord, DarkElf, HighElf, WoodElf, Khajiit, Imperial.
         /// </summary>
-        public string Surname(BankTypes type)
+        public virtual string Surname(BankTypes type)
         {
             // Bank dictionary must be ready
             if (bankDict == null)
@@ -171,7 +171,7 @@ namespace DaggerfallWorkshop.Game.Utility
         /// <summary>
         /// Gets random monster name for quests.
         /// </summary>
-        public string MonsterName(Genders gender = Genders.Male)
+        public virtual string MonsterName(Genders gender = Genders.Male)
         {
             // Bank dictionary must be ready
             if (bankDict == null)
@@ -185,7 +185,7 @@ namespace DaggerfallWorkshop.Game.Utility
         #region Name Generation
 
         // Gets random first name by gender for names that follow 0+1 (male), 2+3 (female) pattern
-        string GetRandomFirstName(NameBank nameBank, Genders gender)
+        protected virtual string GetRandomFirstName(NameBank nameBank, Genders gender)
         {
             // Get set parts
             string[] partsA, partsB;
@@ -211,7 +211,7 @@ namespace DaggerfallWorkshop.Game.Utility
         }
 
         // Gets random surname for names that follow 4+5 pattern
-        string GetRandomSurname(NameBank nameBank)
+        protected virtual string GetRandomSurname(NameBank nameBank)
         {
             // Get set parts
             string[] partsA, partsB;
@@ -229,7 +229,7 @@ namespace DaggerfallWorkshop.Game.Utility
         }
 
         // Gets random surname for Nord names that follow 0+1+"sen" pattern
-        string GetRandomNordSurname(NameBank nameBank)
+        protected virtual string GetRandomNordSurname(NameBank nameBank)
         {
             // Get set parts
             string[] partsA, partsB;
@@ -247,7 +247,7 @@ namespace DaggerfallWorkshop.Game.Utility
         }
 
         // Gets random Redguard name which follows 0+1+2+3(75%) (male), 0+1+2+4 (female) pattern
-        string GetRandomRedguardName(NameBank nameBank, Genders gender)
+        protected virtual string GetRandomRedguardName(NameBank nameBank, Genders gender)
         {
             // Get set parts
             string[] partsA, partsB, partsC, partsD;
@@ -290,7 +290,7 @@ namespace DaggerfallWorkshop.Game.Utility
         // Monster1: 0+(50% +1)+2
         // Monster2: 0+(50% +1)+2+(if female, +3)
         // Monster3: (if male, 25% +3 + " ")+0+1+2
-        string GetRandomMonsterName(Genders gender)
+        protected virtual string GetRandomMonsterName(Genders gender)
         {
             BankTypes type = (BankTypes)UnityEngine.Random.Range(8, 9 + 1); // Get random Monster1 or Monster2 for now.
             NameBank nameBank = bankDict[type];
@@ -369,7 +369,7 @@ namespace DaggerfallWorkshop.Game.Utility
         /// <summary>
         /// Loads namegen data from JSON file.
         /// </summary>
-        void LoadNameGenData()
+        protected virtual void LoadNameGenData()
         {
             try
             {
