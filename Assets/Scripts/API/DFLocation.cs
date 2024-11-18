@@ -250,7 +250,7 @@ namespace DaggerfallConnect
 
             // Nature sets
             Nature_RainForest = 500,
-            Nature_SubTropical = 501,
+            Nature_SubTropical = 1030,
             Nature_Swamp = 502,
             Nature_Desert = 503,
             Nature_TemperateWoodland = 504,
