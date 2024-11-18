@@ -18,8 +18,6 @@ using Unity.Collections;
 using Unity.Jobs;
 using Unity.Mathematics;
 using DaggerfallConnect.Arena2;
-using DaggerfallWorkshop.Utility.AssetInjection;
-using DaggerfallWorkshop.Game.Utility.ModSupport;
 
 namespace DaggerfallWorkshop
 {
@@ -59,8 +57,8 @@ namespace DaggerfallWorkshop
         [System.NonSerialized, HideInInspector]
         public Vector3 BlockOrigin = Vector3.zero;
 
-        [Range(0, 1040)]
-        public int TextureArchive = 1030;
+        [Range(0, 2048)]
+        public int TextureArchive = 504;
         [Range(0, 30)]
         public float FramesPerSecond = 0;
         public bool RandomStartFrame = true;
@@ -274,146 +272,95 @@ namespace DaggerfallWorkshop
         /// </summary>
         /// <param name="archive">Archive index.</param>
         /// <param name="force">Force new archive, even if already set.</param>
-public void SetMaterial(int archive, bool force = false)
-{
-    Debug.Log($"SetMaterial called for archive {archive} with force={force}");
+        public void SetMaterial(int archive, bool force = false)
+        {
+            ___SetMaterial.Begin();
 
-    if (!ReadyCheck())
-    {
-        Debug.LogError("DaggerfallUnity is not ready. Exiting SetMaterial.");
-        return;
-    }
+            if (!ReadyCheck())
+                return;
 
-    // Do nothing if this archive is already set and force is false
-    if (archive == currentArchive && !force)
-    {
-        Debug.Log($"Archive {archive} is already set and force is false. Exiting SetMaterial.");
-        return;
-    }
+            // Do nothing if this archive already set
+            if (archive == currentArchive && !force)
+                return;
 
-    // Get atlas size based on settings
-    int size = DaggerfallUnity.Settings.AssetInjection ? 4096 : 2048;
-    Debug.Log($"Atlas size determined: {size}");
+            // Get atlas size
+            int size = DaggerfallUnity.Settings.AssetInjection ? 4096 : 2048;
 
-    // Try to get the standard atlas material
-    ___getMaterialAtlas.Begin();
-    Material material = dfUnity.MaterialReader.GetMaterialAtlas(
-        archive, 0, 4, size,
-        out Rect[] atlasRects, out RecordIndex[] atlasIndices,
-        4, true, 0, false, true
-    );
-    ___getMaterialAtlas.End();
+            // Get standard atlas material
+            ___getMaterialAtlas.Begin();
+            // Just going to steal texture and settings
+            // TODO: Revise material loading for custom shaders
+            Material material = dfUnity.MaterialReader.GetMaterialAtlas(
+                archive, 0, 4, size,
+                out Rect[] atlasRects, out RecordIndex[] atlasIndices,
+                4, true, 0, false, true
+            );
+            ___getMaterialAtlas.End();
 
-    if (material == null)
-    {
-        Debug.LogError($"Failed to get material atlas for archive {archive}. Ensure textures are correctly placed.");
-        return;
-    }
-    else
-    {
-        Debug.Log($"Material atlas successfully retrieved for archive {archive}.");
-    }
+            // Serialize cached material information
+            ___getCachedMaterialAtlas.Begin();
+            dfUnity.MaterialReader.GetCachedMaterialAtlas(archive, out cachedMaterial);
+            ___getCachedMaterialAtlas.End();
 
-    // Serialize cached material information
-    ___getCachedMaterialAtlas.Begin();
-    bool cacheResult = dfUnity.MaterialReader.GetCachedMaterialAtlas(archive, out cachedMaterial);
-    ___getCachedMaterialAtlas.End();
+            // Steal textures from source material
+            ___stealTextureFromSourceMaterial.Begin();
+            Texture albedoMap = material.mainTexture;
+            Texture normalMap = material.GetTexture(Uniforms.BumpMap);
+            Texture emissionMap = material.GetTexture(Uniforms.EmissionMap);
+            ___stealTextureFromSourceMaterial.End();
 
-    if (!cacheResult)
-    {
-        Debug.LogError($"Failed to retrieve cached material for archive {archive}. Check mod configuration.");
-        return;
-    }
-    else
-    {
-        Debug.Log($"Cached material retrieved for archive {archive} with key {cachedMaterial.key}.");
-    }
+            // Create local material
+            ___createLocalMaterial.Begin();
+            // TODO: This should be created by MaterialReader
+            Shader shader = (DaggerfallUnity.Settings.NatureBillboardShadows) ?
+                Shader.Find(MaterialReader._DaggerfallBillboardBatchShaderName) :
+                Shader.Find(MaterialReader._DaggerfallBillboardBatchNoShadowsShaderName);
+            Material atlasMaterial = new Material(shader);
+            atlasMaterial.mainTexture = albedoMap;
+            ___createLocalMaterial.End();
 
-    // Log details about atlas properties
-    Debug.Log($"Atlas contains {atlasRects.Length} rectangles and {atlasIndices.Length} indices.");
+            // Assign other maps
+            ___assignOtherMaps.Begin();
+            if (normalMap != null)
+            {
+                atlasMaterial.SetTexture(Uniforms.BumpMap, normalMap);
+                atlasMaterial.EnableKeyword(KeyWords.NormalMap);
+            }
+            if (emissionMap != null)
+            {
+                atlasMaterial.SetTexture(Uniforms.EmissionMap, emissionMap);
+                atlasMaterial.SetColor(Uniforms.EmissionColor, material.GetColor(Uniforms.EmissionColor));
+                atlasMaterial.EnableKeyword(KeyWords.Emission);
+            }
+            ___assignOtherMaps.End();
 
-    // Steal textures from source material
-    ___stealTextureFromSourceMaterial.Begin();
-    Texture albedoMap = material.mainTexture;
-    Texture normalMap = material.GetTexture(Uniforms.BumpMap);
-    Texture emissionMap = material.GetTexture(Uniforms.EmissionMap);
-    ___stealTextureFromSourceMaterial.End();
+            // Assign renderer properties
+            // Turning off receive shadows to prevent self-shadowing
+            meshRenderer.sharedMaterial = atlasMaterial;
+            meshRenderer.receiveShadows = false;
 
-    Debug.Log($"Textures retrieved - Albedo: {albedoMap}, Normal: {normalMap}, Emission: {emissionMap}");
+            // Set shadow casting mode - force off for lights
+            if (archive == Utility.TextureReader.LightsTextureArchive)
+                meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
+            else
+                meshRenderer.shadowCastingMode = ShadowCasting;
 
-    // Create local material
-    ___createLocalMaterial.Begin();
-    Shader shader = (DaggerfallUnity.Settings.NatureBillboardShadows) ?
-        Shader.Find(MaterialReader._DaggerfallBillboardBatchShaderName) :
-        Shader.Find(MaterialReader._DaggerfallBillboardBatchNoShadowsShaderName);
-    Material atlasMaterial = new Material(shader);
-    atlasMaterial.mainTexture = albedoMap;
-    ___createLocalMaterial.End();
+            // Set animation speed for supported archives
+            if (archive == Utility.TextureReader.AnimalsTextureArchive)
+                FramesPerSecond = animalFps;
+            else if (archive == Utility.TextureReader.LightsTextureArchive)
+                FramesPerSecond = lightFps;
+            else
+                FramesPerSecond = 0;
 
-    Debug.Log($"Local material created using shader: {shader.name}");
+            // Clear custom material
+            customMaterial = null;
 
-    // Assign other texture maps (normal and emission)
-    ___assignOtherMaps.Begin();
-    if (normalMap != null)
-    {
-        atlasMaterial.SetTexture(Uniforms.BumpMap, normalMap);
-        atlasMaterial.EnableKeyword(KeyWords.NormalMap);
-        Debug.Log("Normal map assigned to local material.");
-    }
-    if (emissionMap != null)
-    {
-        atlasMaterial.SetTexture(Uniforms.EmissionMap, emissionMap);
-        atlasMaterial.SetColor(Uniforms.EmissionColor, material.GetColor(Uniforms.EmissionColor));
-        atlasMaterial.EnableKeyword(KeyWords.Emission);
-        Debug.Log("Emission map assigned to local material.");
-    }
-    ___assignOtherMaps.End();
+            TextureArchive = archive;
+            currentArchive = archive;
 
-    // Assign material to the mesh renderer
-    Debug.Log($"Assigning local material to the MeshRenderer.");
-    meshRenderer.sharedMaterial = atlasMaterial;
-    meshRenderer.receiveShadows = false;
-
-    // Set shadow casting mode
-    if (archive == Utility.TextureReader.LightsTextureArchive)
-    {
-        meshRenderer.shadowCastingMode = ShadowCastingMode.Off;
-        Debug.Log("Shadow casting mode set to Off (LightsTextureArchive).");
-    }
-    else
-    {
-        meshRenderer.shadowCastingMode = ShadowCasting;
-        Debug.Log("Shadow casting mode set to default.");
-    }
-
-    // Set animation speed for specific archives
-    if (archive == Utility.TextureReader.AnimalsTextureArchive)
-    {
-        FramesPerSecond = animalFps;
-        Debug.Log($"Animation speed set to {animalFps} FPS for AnimalsTextureArchive.");
-    }
-    else if (archive == Utility.TextureReader.LightsTextureArchive)
-    {
-        FramesPerSecond = lightFps;
-        Debug.Log($"Animation speed set to {lightFps} FPS for LightsTextureArchive.");
-    }
-    else
-    {
-        FramesPerSecond = 0;
-        Debug.Log("Animation disabled for this archive.");
-    }
-
-    // Clear custom material
-    customMaterial = null;
-    Debug.Log("Custom material cleared.");
-
-    // Update current archive
-    TextureArchive = archive;
-    currentArchive = archive;
-    Debug.Log($"Material successfully set for archive {archive}.");
-
-    ___SetMaterial.End();
-}
+            ___SetMaterial.End();
+        }
 
         /// <summary>
         /// Directly set custom atlas material all billboards in batch will share.
@@ -504,7 +451,7 @@ public void SetMaterial(int archive, bool force = false)
             }
 
             // Get frame count and start frame
-            int frameCount = 0; //cachedMaterial.atlasFrameCounts[record];
+            int frameCount = cachedMaterial.atlasFrameCounts[record];
             int startFrame = 0;
             if (RandomStartFrame)
                 startFrame = UnityEngine.Random.Range(0, frameCount);

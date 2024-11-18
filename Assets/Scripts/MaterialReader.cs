@@ -349,24 +349,11 @@ namespace DaggerfallWorkshop
         /// <param name="frame">Frame index.</param>
         /// <param name="alphaIndex">Index to receive transparent alpha.</param>
         /// <returns>Material or null.</returns>
-public Material GetMaterial(int archive, int record, int frame = 0, int alphaIndex = -1)
-{
-    Debug.Log($"GetMaterial called for archive {archive}, record {record}, frame {frame}.");
-
-    Rect rect;
-    Material material = GetMaterial(archive, record, frame, alphaIndex, out rect, 0, false);
-
-    if (material == null)
-    {
-        Debug.LogError($"Failed to retrieve material for archive {archive}, record {record}, frame {frame}.");
-    }
-    else
-    {
-        Debug.Log($"Material successfully retrieved for archive {archive}, record {record}, frame {frame}. Rect: {rect}");
-    }
-
-    return material;
-}
+        public Material GetMaterial(int archive, int record, int frame = 0, int alphaIndex = -1)
+        {
+            Rect rect;
+            return GetMaterial(archive, record, frame, alphaIndex, out rect, 0, false);
+        }
 
         /// <summary>
         /// Gets Unity Material from Daggerfall texture with more options.
@@ -542,136 +529,109 @@ public Material GetMaterial(int archive, int record, int frame = 0, int alphaInd
         /// <param name="copyToOppositeBorder">Copy texture edges to opposite border. Requires border, will overwrite dilate.</param>
         /// <param name="isBillboard">Set true when creating atlas material for simple billboards.</param>
         /// <returns>Material or null.</returns>
-public Material GetMaterialAtlas(
-    int archive,
-    int alphaIndex,
-    int padding,
-    int maxAtlasSize,
-    out Rect[] rectsOut,
-    out RecordIndex[] indicesOut,
-    int border = 0,
-    bool dilate = false,
-    int shrinkUVs = 0,
-    bool copyToOppositeBorder = false,
-    bool isBillboard = false)
-{
-    // Debug: Method called
-    Debug.Log($"GetMaterialAtlas called for archive {archive}. Ready check in progress...");
-
-    // Ready check
-    if (!IsReady)
-    {
-        Debug.LogError($"MaterialReader is not ready. Ensure DaggerfallUnity and TextureReader are properly initialized.");
-        rectsOut = null;
-        indicesOut = null;
-        return null;
-    }
-
-    // Debug: Cache lookup
-    Debug.Log($"Looking for cached atlas material for archive {archive}...");
-    int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
-    if (archive < 512 || materialDict.ContainsKey(key))
-    {
-        CachedMaterial cm = GetMaterialFromCache(key);
-        if (cm.filterMode == MainFilterMode)
+        public Material GetMaterialAtlas(
+            int archive,
+            int alphaIndex,
+            int padding,
+            int maxAtlasSize,
+            out Rect[] rectsOut,
+            out RecordIndex[] indicesOut,
+            int border = 0,
+            bool dilate = false,
+            int shrinkUVs = 0,
+            bool copyToOppositeBorder = false,
+            bool isBillboard = false)
         {
-            // Debug: Cache hit
-            Debug.Log($"Atlas material found in cache for archive {archive}. Rects: {cm.atlasRects?.Length}, Indices: {cm.atlasIndices?.Length}");
-            rectsOut = cm.atlasRects;
-            indicesOut = cm.atlasIndices;
-            return cm.material;
+            // Ready check
+            if (!IsReady)
+            {
+                rectsOut = null;
+                indicesOut = null;
+                return null;
+            }
+
+            int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
+            if (materialDict.ContainsKey(key))
+            {
+                CachedMaterial cm = GetMaterialFromCache(key);
+                if (cm.filterMode == MainFilterMode)
+                {
+                    // Properties are the same
+                    rectsOut = cm.atlasRects;
+                    indicesOut = cm.atlasIndices;
+                    return cm.material;
+                }
+                else
+                {
+                    // Properties don't match, remove material and reload
+                    materialDict.Remove(key);
+                }
+            }
+
+            // Create material
+            Material material;
+            if (isBillboard)
+                material = CreateBillboardMaterial();
+            else
+                material = CreateDefaultMaterial();
+
+            // Create settings
+            GetTextureSettings settings = TextureReader.CreateTextureSettings(archive, 0, 0, alphaIndex, border, dilate);
+            settings.createNormalMap = GenerateNormals;
+            settings.autoEmission = true;
+            settings.atlasShrinkUVs = shrinkUVs;
+            settings.atlasPadding = padding;
+            settings.atlasMaxSize = maxAtlasSize;
+            settings.copyToOppositeBorder = copyToOppositeBorder;
+
+            // Setup material
+            material.name = string.Format("TEXTURE.{0:000} [Atlas]", archive);
+            GetTextureResults results = textureReader.GetTexture2DAtlas(settings, AlphaTextureFormat);
+
+            material.mainTexture = results.albedoMap;
+            material.mainTexture.filterMode = MainFilterMode;
+
+            // Setup normal map
+            if (GenerateNormals && results.normalMap != null)
+            {
+                results.normalMap.filterMode = MainFilterMode;
+                material.SetTexture(Uniforms.BumpMap, results.normalMap);
+                material.EnableKeyword(KeyWords.NormalMap);
+            }
+
+            // Setup emission map
+            if (results.isEmissive && results.emissionMap != null)
+            {
+                results.emissionMap.filterMode = MainFilterMode;
+                material.SetTexture(Uniforms.EmissionMap, results.emissionMap);
+                material.SetColor(Uniforms.EmissionColor, Color.white);
+                material.EnableKeyword(KeyWords.Emission);
+            }
+
+            // TEMP: Bridging between legacy material out params and GetTextureResults for now
+            Vector2[] sizesOut, scalesOut, offsetsOut;
+            sizesOut = results.atlasSizes.ToArray();
+            scalesOut = results.atlasScales.ToArray();
+            offsetsOut = results.atlasOffsets.ToArray();
+            rectsOut = results.atlasRects.ToArray();
+            indicesOut = results.atlasIndices.ToArray();
+
+            // Setup cached material
+            CachedMaterial newcm = new CachedMaterial();
+            newcm.key = key;
+            newcm.keyGroup = AtlasKeyGroup;
+            newcm.atlasRects = rectsOut;
+            newcm.atlasIndices = indicesOut;
+            newcm.material = material;
+            newcm.filterMode = MainFilterMode;
+            newcm.recordSizes = sizesOut;
+            newcm.recordScales = scalesOut;
+            newcm.recordOffsets = offsetsOut;
+            newcm.atlasFrameCounts = results.atlasFrameCounts.ToArray();
+            materialDict.Add(key, newcm);
+
+            return material;
         }
-        else
-        {
-            // Debug: Cache mismatch
-            Debug.LogWarning($"Cached atlas material found for archive {archive}, but filter mode mismatch. Removing cache entry.");
-            materialDict.Remove(key);
-        }
-    }
-    else
-    {
-        // Debug: Cache miss
-        Debug.Log($"No cached atlas material found for archive {archive}. Proceeding to create new atlas.");
-    }
-
-    // Create material
-    Material material;
-    if (isBillboard)
-        material = CreateBillboardMaterial();
-    else
-        material = CreateDefaultMaterial();
-
-    // Create settings
-    Debug.Log($"Requesting texture atlas creation for archive {archive} with settings: " +
-              $"padding={padding}, maxAtlasSize={maxAtlasSize}, border={border}, dilate={dilate}, " +
-              $"shrinkUVs={shrinkUVs}, copyToOppositeBorder={copyToOppositeBorder}.");
-
-    GetTextureSettings settings = TextureReader.CreateTextureSettings(archive, 0, 0, alphaIndex, border, dilate);
-    settings.createNormalMap = GenerateNormals;
-    settings.autoEmission = true;
-    settings.atlasShrinkUVs = shrinkUVs;
-    settings.atlasPadding = padding;
-    settings.atlasMaxSize = maxAtlasSize;
-    settings.copyToOppositeBorder = copyToOppositeBorder;
-
-    // Setup material
-    material.name = string.Format("TEXTURE.{0:000} [Atlas]", archive);
-    GetTextureResults results = textureReader.GetTexture2DAtlas(settings, AlphaTextureFormat);
-
-    // Debug: After atlas creation
-    Debug.Log($"Atlas created for archive {archive}. Rects: {results.atlasRects?.Count}, Indices: {results.atlasIndices?.Count}");
-    if (results.atlasRects.Count == 0 || results.atlasIndices.Count == 0)
-    {
-        Debug.LogError($"Atlas creation failed for archive {archive}. No valid textures or indices.");
-    }
-
-    material.mainTexture = results.albedoMap;
-    material.mainTexture.filterMode = MainFilterMode;
-
-    // Setup normal map
-    if (GenerateNormals && results.normalMap != null)
-    {
-        results.normalMap.filterMode = MainFilterMode;
-        material.SetTexture(Uniforms.BumpMap, results.normalMap);
-        material.EnableKeyword(KeyWords.NormalMap);
-    }
-
-    // Setup emission map
-    if (results.isEmissive && results.emissionMap != null)
-    {
-        results.emissionMap.filterMode = MainFilterMode;
-        material.SetTexture(Uniforms.EmissionMap, results.emissionMap);
-        material.SetColor(Uniforms.EmissionColor, Color.white);
-        material.EnableKeyword(KeyWords.Emission);
-    }
-
-    // TEMP: Bridging between legacy material out params and GetTextureResults for now
-    Vector2[] sizesOut, scalesOut, offsetsOut;
-    sizesOut = results.atlasSizes.ToArray();
-    scalesOut = results.atlasScales.ToArray();
-    offsetsOut = results.atlasOffsets.ToArray();
-    rectsOut = results.atlasRects.ToArray();
-    indicesOut = results.atlasIndices.ToArray();
-
-    // Setup cached material
-    Debug.Log($"Material atlas setup complete for archive {archive}. Storing in cache...");
-    CachedMaterial newcm = new CachedMaterial()
-    {
-        key = key,
-        keyGroup = AtlasKeyGroup,
-        atlasRects = rectsOut,
-        atlasIndices = indicesOut,
-        material = material,
-        filterMode = MainFilterMode,
-        recordSizes = sizesOut,
-        recordScales = scalesOut,
-        recordOffsets = offsetsOut,
-        atlasFrameCounts = results.atlasFrameCounts.ToArray(),
-    };
-    materialDict.Add(key, newcm);
-
-    return material;
-}
 
         /// <summary>
         /// Gets Unity Material from Daggerfall terrain tilemap texture.
@@ -871,23 +831,18 @@ public Material GetMaterialAtlas(
         /// <param name="archive">Atlas archive index.</param>
         /// <param name="cachedMaterialOut">CachedMaterial out</param>
         /// <returns>True if CachedMaterial found.</returns>
-public bool GetCachedMaterialAtlas(int archive, out CachedMaterial cachedMaterialOut)
-{
-    Debug.Log($"Checking cache for atlas material for archive {archive}...");
-    int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
+        public bool GetCachedMaterialAtlas(int archive, out CachedMaterial cachedMaterialOut)
+        {
+            int key = MakeTextureKey((short)archive, (byte)0, (byte)0, AtlasKeyGroup);
+            if (materialDict.ContainsKey(key))
+            {
+                cachedMaterialOut = GetMaterialFromCache(key);
+                return true;
+            }
 
-    if (archive < 512 || materialDict.ContainsKey(key))
-    {
-        Debug.Log($"Cached atlas material found for archive {archive}.");
-        cachedMaterialOut = GetMaterialFromCache(key);
-        return true;
-    }
-
-    Debug.LogWarning($"Cached atlas material not found for archive {archive}. Ensure the atlas was generated correctly.");
-    cachedMaterialOut = new CachedMaterial();
-    return false;
-}
-
+            cachedMaterialOut = new CachedMaterial();
+            return false;
+        }
 
         /// <summary>
         /// Gets CachedMaterial properties for a billboard with custom material.
