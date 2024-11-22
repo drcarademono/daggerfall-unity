@@ -421,174 +421,180 @@ namespace DaggerfallWorkshop.Utility
         /// <param name="settings">Get texture settings.</param>
         /// <param name="alphaTextureFormat">Alpha TextureFormat.</param>
         /// <returns>GetTextureResults.</returns>
-public GetTextureResults GetTexture2DAtlas(
-    GetTextureSettings settings,
-    SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.ARGB32)
-{
-    GetTextureResults results = new GetTextureResults();
-
-    // Individual textures must remain readable to pack into atlas
-    bool stayReadable = settings.stayReadable;
-    settings.stayReadable = true;
-
-    // Assign texture file
-    TextureFile textureFile = null;
-    if (settings.textureFile == null)
-    {
-        string path = Path.Combine(Arena2Path, TextureFile.IndexToFileName(settings.archive));
-        if (File.Exists(path))
+        public GetTextureResults GetTexture2DAtlas(
+            GetTextureSettings settings,
+            SupportedAlphaTextureFormats alphaTextureFormat = SupportedAlphaTextureFormats.ARGB32)
         {
-            textureFile = new TextureFile(path, FileUsage.UseMemory, true);
-            settings.textureFile = textureFile;
-        }
-    }
-    else
-    {
-        textureFile = settings.textureFile;
-    }
+            GetTextureResults results = new GetTextureResults();
 
-    // Prepare lists
-    results.atlasSizes = new List<Vector2>();
-    results.atlasScales = new List<Vector2>();
-    results.atlasOffsets = new List<Vector2>();
-    results.atlasFrameCounts = new List<int>();
+            // Individual textures must remain readable to pack into atlas
+            bool stayReadable = settings.stayReadable;
+            settings.stayReadable = true;
 
-    // Check if modded textures are available
-    bool hasNormalMaps = false;
-    bool hasEmissionMaps = false;
-    bool hasAnimation = false;
-    var textureImport = settings.atlasMaxSize == 4096 ? TextureImport.AllLocations : TextureImport.None;
-    List<Texture2D> albedoTextures = new List<Texture2D>();
-    List<Texture2D> normalTextures = new List<Texture2D>();
-    List<Texture2D> emissionTextures = new List<Texture2D>();
-    List<RecordIndex> indices = new List<RecordIndex>();
-
-    Debug.Log($"Processing archive {settings.archive} in Texture2DAtlas");
-
-    int recordCount = textureFile?.RecordCount ?? 0;
-
-    // Fallback to modded textures if no records in textureFile
-    if (recordCount == 0)
-    {
-        Debug.Log($"No records in Arena2 for archive {settings.archive}. Attempting to load modded textures.");
-
-        for (int record = 0; record < 256; record++) // Assuming a maximum of 256 records
-        {
-            settings.record = record;
-
-            int frameCount = 0;
-            List<Texture2D> modFrames = new List<Texture2D>();
-            while (true)
+            // Assign texture file
+            TextureFile textureFile = null;
+            if (settings.textureFile == null)
             {
-                settings.frame = frameCount;
-                if (TextureReplacement.TryImportTexture(settings.archive, record, frameCount, out Texture2D modAlbedo))
+                string path = Path.Combine(Arena2Path, TextureFile.IndexToFileName(settings.archive));
+                if (File.Exists(path))
                 {
-                    Debug.Log($"Trying to import modded archive {settings.archive}_{record} in Texture2DAtlas");
-                    modFrames.Add(modAlbedo);
-                    albedoTextures.Add(modAlbedo);
-                    frameCount++;
-                }
-                else
-                {
-                    break;
+                    textureFile = new TextureFile(path, FileUsage.UseMemory, true);
+                    settings.textureFile = textureFile;
                 }
             }
-
-            if (frameCount > 0)
+            else
             {
-                RecordIndex ri = new RecordIndex()
-                {
-                    startIndex = albedoTextures.Count - frameCount,
-                    frameCount = frameCount,
-                    width = modFrames[0].width,
-                    height = modFrames[0].height,
-                };
-                indices.Add(ri);
-
-                results.atlasSizes.Add(new Vector2(modFrames[0].width, modFrames[0].height));
-                results.atlasScales.Add(Vector2.one); // Assume 1:1 scale for modded textures
-                results.atlasOffsets.Add(Vector2.zero); // Assume no offset for modded textures
-                results.atlasFrameCounts.Add(frameCount);
+                textureFile = settings.textureFile;
             }
+
+            // Create lists
+            results.atlasSizes = new List<Vector2>();
+            results.atlasScales = new List<Vector2>();
+            results.atlasOffsets = new List<Vector2>();
+            results.atlasFrameCounts = new List<int>();
+
+            // Check if custom textures are available or fallback to Arena2 textures
+            bool hasNormalMaps = false;
+            bool hasEmissionMaps = false;
+            bool hasAnimation = false;
+            var textureImport = settings.atlasMaxSize == 4096 ? TextureImport.AllLocations : TextureImport.None;
+            List<Texture2D> albedoTextures = new List<Texture2D>();
+            List<Texture2D> normalTextures = new List<Texture2D>();
+            List<Texture2D> emissionTextures = new List<Texture2D>();
+            List<RecordIndex> indices = new List<RecordIndex>();
+
+            int recordCount = textureFile?.RecordCount ?? 0;
+
+            if (recordCount > 0)
+            {
+                // Process Arena2 textures
+                for (int record = 0; record < recordCount; record++)
+                {
+                    settings.record = record;
+                    int frames = textureFile.GetFrameCount(record);
+                    if (frames > 1)
+                        hasAnimation = true;
+
+                    DFSize size = textureFile.GetSize(record);
+                    DFSize scale = textureFile.GetScale(record);
+                    DFPosition offset = textureFile.GetOffset(record);
+                    RecordIndex ri = new RecordIndex()
+                    {
+                        startIndex = albedoTextures.Count,
+                        frameCount = frames,
+                        width = size.Width,
+                        height = size.Height,
+                    };
+                    indices.Add(ri);
+
+                    for (int frame = 0; frame < frames; frame++)
+                    {
+                        settings.frame = frame;
+                        GetTextureResults nextTextureResults = GetTexture2D(settings, alphaTextureFormat, textureImport);
+                        albedoTextures.Add(nextTextureResults.albedoMap);
+                        if (nextTextureResults.normalMap != null)
+                        {
+                            normalTextures.Add(nextTextureResults.normalMap);
+                            hasNormalMaps = true;
+                        }
+                        if (nextTextureResults.emissionMap != null)
+                        {
+                            emissionTextures.Add(nextTextureResults.emissionMap);
+                            hasEmissionMaps = true;
+                        }
+                    }
+
+                    results.atlasSizes.Add(new Vector2(size.Width, size.Height));
+                    results.atlasScales.Add(new Vector2(scale.Width, scale.Height));
+                    results.atlasOffsets.Add(new Vector2(offset.X, offset.Y));
+                    results.atlasFrameCounts.Add(frames);
+                }
+            }
+            else
+            {
+                // Fallback to custom textures
+                ProcessCustomTextures(settings, albedoTextures, normalTextures, emissionTextures, indices, results);
+            }
+
+            // Pack albedo textures into atlas
+            Texture2D atlasAlbedoMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, ParseTextureFormat(alphaTextureFormat), MipMaps);
+            Rect[] rects = atlasAlbedoMap.PackTextures(albedoTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
+
+            // Pack normal textures into atlas
+            Texture2D atlasNormalMap = null;
+            if (hasNormalMaps)
+            {
+                atlasNormalMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, TextureFormat.ARGB32, MipMaps);
+                atlasNormalMap.PackTextures(normalTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
+            }
+
+            // Pack emission textures into atlas
+            Texture2D atlasEmissionMap = null;
+            if (hasEmissionMaps)
+            {
+                atlasEmissionMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, ParseTextureFormat(alphaTextureFormat), MipMaps);
+                atlasEmissionMap.PackTextures(emissionTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
+            }
+
+            // Finalize results
+            results.atlasRects = new List<Rect>(rects);
+            results.atlasIndices = indices;
+            results.albedoMap = atlasAlbedoMap;
+            results.normalMap = atlasNormalMap;
+            results.emissionMap = atlasEmissionMap;
+            results.isAtlasAnimated = hasAnimation;
+            results.isEmissive = hasEmissionMaps;
+
+            return results;
         }
-    }
-    else
-    {
-        for (int record = 0; record < recordCount; record++)
+
+        private void ProcessCustomTextures(
+            GetTextureSettings settings,
+            List<Texture2D> albedoTextures,
+            List<Texture2D> normalTextures,
+            List<Texture2D> emissionTextures,
+            List<RecordIndex> indices,
+            GetTextureResults results)
         {
-            settings.record = record;
-            int frames = textureFile.GetFrameCount(record);
-            if (frames > 1)
-                hasAnimation = true;
-
-            DFSize size = textureFile.GetSize(record);
-            DFSize scale = textureFile.GetScale(record);
-            DFPosition offset = textureFile.GetOffset(record);
-            RecordIndex ri = new RecordIndex()
+            for (int record = 0; record < 256; record++) // Assuming a maximum of 256 records
             {
-                startIndex = albedoTextures.Count,
-                frameCount = frames,
-                width = size.Width,
-                height = size.Height,
-            };
-            indices.Add(ri);
+                settings.record = record;
 
-            for (int frame = 0; frame < frames; frame++)
-            {
-                settings.frame = frame;
-                GetTextureResults nextTextureResults = GetTexture2D(settings, alphaTextureFormat, textureImport);
-                albedoTextures.Add(nextTextureResults.albedoMap);
-                if (nextTextureResults.normalMap != null)
+                int frameCount = 0;
+                List<Texture2D> modFrames = new List<Texture2D>();
+                while (true)
                 {
-                    normalTextures.Add(nextTextureResults.normalMap);
-                    hasNormalMaps = true;
+                    settings.frame = frameCount;
+                    if (TextureReplacement.TryImportTexture(settings.archive, record, frameCount, out Texture2D modAlbedo))
+                    {
+                        modFrames.Add(modAlbedo);
+                        albedoTextures.Add(modAlbedo);
+                        frameCount++;
+                    }
+                    else
+                    {
+                        break;
+                    }
                 }
-                if (nextTextureResults.emissionMap != null)
+
+                if (frameCount > 0)
                 {
-                    emissionTextures.Add(nextTextureResults.emissionMap);
-                    hasEmissionMaps = true;
+                    RecordIndex ri = new RecordIndex()
+                    {
+                        startIndex = albedoTextures.Count - frameCount,
+                        frameCount = frameCount,
+                        width = modFrames[0].width,
+                        height = modFrames[0].height,
+                    };
+                    indices.Add(ri);
+
+                    results.atlasSizes.Add(new Vector2(modFrames[0].width, modFrames[0].height));
+                    results.atlasScales.Add(Vector2.one); // Assume 1:1 scale for custom textures
+                    results.atlasOffsets.Add(Vector2.zero); // Assume no offset for custom textures
+                    results.atlasFrameCounts.Add(frameCount);
                 }
             }
-
-            results.atlasSizes.Add(new Vector2(size.Width, size.Height));
-            results.atlasScales.Add(new Vector2(scale.Width, scale.Height));
-            results.atlasOffsets.Add(new Vector2(offset.X, offset.Y));
-            results.atlasFrameCounts.Add(frames);
         }
-    }
-
-    // Pack albedo textures into atlas
-    Texture2D atlasAlbedoMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, ParseTextureFormat(alphaTextureFormat), MipMaps);
-    Rect[] rects = atlasAlbedoMap.PackTextures(albedoTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
-
-    // Pack normal textures into atlas
-    Texture2D atlasNormalMap = null;
-    if (hasNormalMaps)
-    {
-        atlasNormalMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, TextureFormat.ARGB32, MipMaps);
-        atlasNormalMap.PackTextures(normalTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
-    }
-
-    // Pack emission textures into atlas
-    Texture2D atlasEmissionMap = null;
-    if (hasEmissionMaps)
-    {
-        atlasEmissionMap = new Texture2D(settings.atlasMaxSize, settings.atlasMaxSize, ParseTextureFormat(alphaTextureFormat), MipMaps);
-        atlasEmissionMap.PackTextures(emissionTextures.ToArray(), settings.atlasPadding, settings.atlasMaxSize, !stayReadable);
-    }
-
-    // Finalize results
-    results.atlasRects = new List<Rect>(rects);
-    results.atlasIndices = indices;
-    results.albedoMap = atlasAlbedoMap;
-    results.normalMap = atlasNormalMap;
-    results.emissionMap = atlasEmissionMap;
-    results.isAtlasAnimated = hasAnimation;
-    results.isEmissive = hasEmissionMaps;
-
-    return results;
-}
-
 
         ///// <summary>
         ///// TEMP: Creates super-atlas populated with all archives in array.
