@@ -534,8 +534,8 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             // Check for the "Index" field and assign its value
             jsonBlockIndex = dfBlock.Value.Index;
 
-            // If jsonBlockIndex is invalid (less than or equal to blocksFile.BsaFile.Count), use fallback method
-            if (jsonBlockIndex <= blocksFile.BsaFile.Count)
+            // If jsonBlockIndex is invalid (less than or equal to nextBlockIndex), use fallback method
+            if (jsonBlockIndex <= nextBlockIndex)
             {
                 AssignNextIndex(blockName);
                 return;
