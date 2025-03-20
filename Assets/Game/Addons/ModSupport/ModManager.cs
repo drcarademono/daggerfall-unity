@@ -779,14 +779,21 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 
             try
             {
-                //assembly = Compiler.CompileSource(source, true);
-                return Roslyn.Compiler.Instance.CompileSource(modName, sources);
+                if (Roslyn.Compiler.Instance.CompileSource(modName, sources, out var assembly))
+                {
+                    return assembly;
+                }
+                else
+                {
+                    Debug.LogWarning("Failed to compile");
+                }
             }
             catch (Exception ex)
             {
                 Debug.LogError($"[{modName}] {ex.Message}");
-                return null;
             }
+
+            return null;
         }
 
         #endregion
