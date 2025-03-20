@@ -24,6 +24,8 @@ using UnityEngine.Localization.Settings;
 using DaggerfallWorkshop.Utility;
 using FullSerializer;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
+using UnityEditor.Localization.Plugins.XLIFF.V12;
+using System.Diagnostics.CodeAnalysis;
 
 namespace DaggerfallWorkshop.Game.Utility.ModSupport
 {
@@ -467,9 +469,9 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// </summary>
         /// <param name="type">name of Type</param>
         /// <returns>System.Type</returns>
-        public Type GetCompiledType(string type)
+        public Type? GetCompiledType(string type)
         {
-            Type t = null;
+            Type? t = null;
 
             if (string.IsNullOrEmpty(type))
                 return null;
@@ -629,7 +631,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// <param name="assetName">name of asset</param>
         /// <param name="loadedBundle">had to load asset bundle</param>
         /// <returns>A reference to the loaded asset or null if not found.</returns>
-        private T LoadAssetFromBundle<T>(string assetName, out bool loadedBundle) where T : UnityEngine.Object
+        private T? LoadAssetFromBundle<T>(string assetName, out bool loadedBundle) where T : UnityEngine.Object
         {
             LoadedAsset la = new LoadedAsset();
             loadedBundle = false;
@@ -656,7 +658,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                             loadedAssets[assetName] = la;
                         }
 
-                        return la.Obj as T;
+                        if (la.Obj is T o) return o;
+                        return null;
                     }
 
                     loadedAssets.Remove(assetName);
@@ -673,14 +676,15 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                         la.TimeStamp = time;
                         loadedAssets.Add(assetName, la);
                     }
-                    return la.Obj as T;
+                    if (la.Obj is T o) return o;
+                    return null;
                 }
 #endif
 
                 if (AssetBundle == null)
                     loadedBundle = LoadAssetBundle();
 
-                if (AssetBundle.Contains(assetName))
+                if (AssetBundle != null && AssetBundle.Contains(assetName))
                 {
                     la.Obj = AssetBundle.LoadAsset<T>(assetName);
 
@@ -805,7 +809,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 this.fallback = fallback;
             }
 
-            internal bool TryGetValue(string key, out string value)
+            internal bool TryGetValue(string key, [NotNullWhen(true)] out string? value)
             {
                 if (table == null)
                 {
@@ -835,7 +839,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         #region Setup
 
         // Returns array containing names of all assets in asset bundle
-        private string[] GetAllAssetNames()
+        private string[]? GetAllAssetNames()
         {
             try
             {
@@ -862,7 +866,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         {
             try
             {
-                TextAsset modInfoAsset = null;
+                TextAsset? modInfoAsset = null;
                 for (int i = 0; i < assetNames.Length; i++)
                 {
                     if (assetNames[i].EndsWith(ModManager.MODINFOEXTENSION))
@@ -875,8 +879,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                     return false;
 
 
-                ModInfo modInfo = null;
-                if (ModManager._serializer.TryDeserialize(fsJsonParser.Parse(modInfoAsset.text), ref modInfo).Succeeded)
+                ModInfo? modInfo = null;
+                if (ModManager._serializer.TryDeserialize(fsJsonParser.Parse(modInfoAsset.text), ref modInfo).Succeeded && modInfo != null)
                 {
                     this.ModInfo = modInfo;
                     return true;
@@ -913,7 +917,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                     else if (assetName.EndsWith(".dll.bytes", StringComparison.Ordinal))
                     {
                         isSource = true;
-                        isPrecompiled = true;    
+                        isPrecompiled = true;
                     }
 
                     if (isSource)
@@ -927,7 +931,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                                 isPreCompiled = isPrecompiled
                             });
                         }
-                    }  
+                    }
                 }
 
                 return true;
@@ -943,7 +947,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// Compiles all source files to assembly
         /// </summary>
         /// <returns></returns>
-        public List<Assembly> CompileSourceToAssemblies()
+        public List<Assembly>? CompileSourceToAssemblies()
         {
 #if UNITY_EDITOR
             if (IsVirtual)
@@ -951,7 +955,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
 #endif
 
             List<string> stringSource = new List<string>(sources.Count);
-            Assembly assembly;
+            Assembly? assembly;
 
             try
             {
@@ -1024,7 +1028,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// </summary>
         /// <param name="state"></param>
         /// <returns></returns>
-        public List<SetupOptions> FindModLoaders(StateManager.StateTypes state)
+        public List<SetupOptions>? FindModLoaders(StateManager.StateTypes state)
         {
             List<SetupOptions> modLoaders;
 
@@ -1035,7 +1039,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 foreach (Type type in types)
                     FindModLoaders(state, type, modLoaders);
                 modLoaders.Sort();
-                return modLoaders;           
+                return modLoaders;
             }
 #endif
             if (assemblies == null || assemblies.Count < 1)
@@ -1113,8 +1117,8 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 return false;
             else
             {
-                if (la.T == typeof(GameObject) && AssetBundle.Contains(ImportedComponentAttribute.MakeFileName(assetName)))
-                    ImportedComponentAttribute.Restore(this, la.Obj as GameObject, assetName);
+                if (la.Obj is GameObject go && AssetBundle.Contains(ImportedComponentAttribute.MakeFileName(assetName)))
+                    ImportedComponentAttribute.Restore(this, go, assetName);
 
                 loadedAssets.Add(assetName, la);
 
@@ -1148,7 +1152,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
         /// Loads the asset bundle associated to this mod.
         /// </summary>
         /// <returns>The loaded asset bundle or null.</returns>
-        public AssetBundle LoadAssetBundle()
+        public AssetBundle? LoadAssetBundle()
         {
 #if UNITY_EDITOR
             if (IsVirtual)
