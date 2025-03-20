@@ -24,7 +24,6 @@ using UnityEngine.Localization.Settings;
 using DaggerfallWorkshop.Utility;
 using FullSerializer;
 using DaggerfallWorkshop.Game.Utility.ModSupport.ModSettings;
-using UnityEditor.Localization.Plugins.XLIFF.V12;
 using System.Diagnostics.CodeAnalysis;
 
 namespace DaggerfallWorkshop.Game.Utility.ModSupport
