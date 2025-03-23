@@ -10,37 +10,57 @@ using System.Diagnostics.CodeAnalysis;
 
 public sealed class Compiler
 {
-    private static Dictionary<string, Assembly> DynamicAssemblyResolver = new();
     private static Compiler? _compiler;
     public static Compiler Instance => _compiler ??= new();
 
-    private static Assembly? OnAssemblyResolve(object sender, ResolveEventArgs e) =>
-        DynamicAssemblyResolver.TryGetValue(e.Name, out var assembly) ? assembly : null;
+    private Dictionary<string, Assembly> dynamicAssemblyResolver;
+    private Dictionary<string, MetadataReference> referenceCache;
+    private CSharpCompilationOptions defaultCompilationOptions;
 
-    public static IEnumerable<Type> GetLoadableTypes(Assembly assembly)
+    private Assembly? OnAssemblyResolve(object sender, ResolveEventArgs e) =>
+        dynamicAssemblyResolver.TryGetValue(e.Name, out var assembly) ? assembly : null;
+
+    private void OnAssemblyLoad(object sender, AssemblyLoadEventArgs e)
     {
-        try
-        {
-            return assembly.GetTypes();
-        }
-        catch (ReflectionTypeLoadException e)
-        {
-            return e.Types.Where(t => t != null);
-        }
+        if (e.LoadedAssembly.IsDynamic || string.IsNullOrWhiteSpace(e.LoadedAssembly.Location)) return;
+        dynamicAssemblyResolver.TryAdd(e.LoadedAssembly.GetName().Name, e.LoadedAssembly);
     }
 
     private Compiler()
     {
         AppDomain.CurrentDomain.AssemblyResolve += OnAssemblyResolve;
+        AppDomain.CurrentDomain.AssemblyLoad += OnAssemblyLoad;
+
+        defaultCompilationOptions = new(
+            outputKind: OutputKind.DynamicallyLinkedLibrary
+        );
+
+        var assemblies = AppDomain.CurrentDomain.GetAssemblies();
+        dynamicAssemblyResolver = new(assemblies.Length);
+        referenceCache = new(assemblies.Length);
+        foreach (var a in assemblies)
+        {
+            var key = a.GetName().Name;
+            if (!dynamicAssemblyResolver.ContainsKey(key) && !string.IsNullOrWhiteSpace(key))
+            {
+                dynamicAssemblyResolver[key] = a;
+            }
+
+            if (!referenceCache.ContainsKey(key) && !string.IsNullOrWhiteSpace(a.Location) && System.IO.File.Exists(a.Location))
+            {
+                referenceCache[key] = MetadataReference.CreateFromFile(a.Location);
+            }
+        }
     }
 
-    public bool CompileSource(string assemblyName, string[] sources, [NotNullWhen(true)] out Assembly? assembly)
+    public bool CompileSource(string assemblyName, string[] sources, [NotNullWhen(true)] out Assembly? assembly, bool isDebugBuild = false)
     {
+        // Forcibly build in debug mode if we are in a standalone development build or the editor.
+        isDebugBuild = isDebugBuild || UnityEngine.Debug.isDebugBuild || UnityEngine.Application.isEditor;
+
         assembly = null;
 
-        var assemblies = AppDomain.CurrentDomain.GetAssemblies()
-            .Where(a => !a.IsDynamic && !string.IsNullOrWhiteSpace(a.Location))
-            .Select(a => MetadataReference.CreateFromFile(a.Location));
+        var compilationOptions = defaultCompilationOptions.WithOptimizationLevel(isDebugBuild ? OptimizationLevel.Debug : OptimizationLevel.Release);
 
         var syntaxTrees = sources
             .Where(s => !string.IsNullOrWhiteSpace(s))
@@ -49,16 +69,13 @@ public sealed class Compiler
         var compilation = CSharpCompilation.Create(
             assemblyName,
             syntaxTrees,
-            assemblies,
-            new(
-                optimizationLevel: OptimizationLevel.Debug,
-                outputKind: OutputKind.DynamicallyLinkedLibrary
-            )
+            referenceCache.Values,
+            compilationOptions
         );
 
         using var peStream = new System.IO.MemoryStream();
         using var pdbStream = new System.IO.MemoryStream();
-        var result = compilation.Emit(peStream, pdbStream);
+        var result = compilation.Emit(peStream, isDebugBuild ? pdbStream : null);
 
         if (!result.Success)
         {
@@ -70,12 +87,22 @@ public sealed class Compiler
             return false;
         }
 
+        if (isDebugBuild)
+        {
+            peStream.Seek(0, System.IO.SeekOrigin.Begin);
+            pdbStream.Seek(0, System.IO.SeekOrigin.Begin);
+            assembly = Assembly.Load(peStream.ToArray(), pdbStream.ToArray());
+        }
+        else
+        {
+            peStream.Seek(0, System.IO.SeekOrigin.Begin);
+            assembly = Assembly.Load(peStream.ToArray());
+        }
+
         peStream.Seek(0, System.IO.SeekOrigin.Begin);
-        pdbStream.Seek(0, System.IO.SeekOrigin.Begin);
 
-        assembly = Assembly.Load(peStream.ToArray(), pdbStream.ToArray());
-
-        DynamicAssemblyResolver.Add(assemblyName, assembly);
+        dynamicAssemblyResolver.TryAdd(assemblyName, assembly);
+        referenceCache.TryAdd(assemblyName, MetadataReference.CreateFromStream(peStream));
         return assembly != null;
     }
 }
