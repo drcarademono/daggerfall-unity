@@ -918,15 +918,21 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                         isSource = true;
                         isPrecompiled = true;
                     }
+                    else if (assetName.EndsWith(".pdb.bytes", StringComparison.Ordinal))
+                    {
+                        continue;
+                    }
 
                     if (isSource)
                     {
                         var newSource = GetAsset<TextAsset>(assetName);
+                        var pdbSource = GetAsset<TextAsset>(assetName.Replace(".dll.bytes", ".pdb.bytes"));
                         if (newSource)
                         {
                             sources.Add(new Source()
                             {
                                 sourceTxt = newSource,
+                                pdbTxt = pdbSource,
                                 isPreCompiled = isPrecompiled
                             });
                         }
@@ -962,7 +968,7 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 {
                     if (sources[i].isPreCompiled)
                     {
-                        assembly = Assembly.Load(sources[i].sourceTxt.bytes);
+                        assembly = Assembly.Load(sources[i].sourceTxt.bytes, sources[i].pdbTxt?.bytes);
                         if (assembly != null)
                             assemblies.Add(assembly);
                     }
@@ -1012,9 +1018,10 @@ namespace DaggerfallWorkshop.Game.Utility.ModSupport
                 }
                 else if (fileName.EndsWith(".dll.bytes", StringComparison.Ordinal))
                 {
-                    var textAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(fileName);
-                    if (textAsset)
-                        types.AddRange(Assembly.Load(textAsset.bytes).GetTypes());
+                    var assemblyAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(fileName);
+                    var pdbAsset = AssetDatabase.LoadAssetAtPath<TextAsset>(fileName.Replace(".dll.bytes", ".pdb.bytes"));
+                    if (assemblyAsset != null)
+                        types.AddRange(Assembly.Load(assemblyAsset.bytes, pdbAsset?.bytes).GetTypes());
                 }
             }
 
