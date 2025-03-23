@@ -14,8 +14,7 @@ using UnityEditor;
 using System;
 using System.IO;
 using System.Collections.Generic;
-using System.Reflection;
-using NUnit.Framework;
+using Assert = UnityEngine.Assertions.Assert;
 
 namespace DaggerfallWorkshop.Game.Utility
 {
@@ -24,15 +23,14 @@ namespace DaggerfallWorkshop.Game.Utility
         const string windowTitle = "Compiler";
         const string menuPath = "Daggerfall Tools/Source Compiler";
         [SerializeField]
-        private List<string> filesToCompile;
+        private List<string> filesToCompile = null!;
         [SerializeField]
         Vector2 scrollPos = Vector2.zero;
         [SerializeField]
         bool showFilesFoldout = true;
-
-        readonly string[] compilers = new string[] { "Portable Compiler", "Internal Compiler (experimental)" };
-        int selectedCompiler;
-        string outputPath;
+        [SerializeField]
+        bool buildDebugSymbols = false;
+        string outputPath = string.Empty;
 
         private void OnEnable()
         {
@@ -56,8 +54,6 @@ namespace DaggerfallWorkshop.Game.Utility
         {
             bool outputPathIsSet = !string.IsNullOrEmpty(outputPath);
 
-            selectedCompiler = GUILayout.SelectionGrid(selectedCompiler, compilers, 2);
-
             GUILayout.Label("Select source files to compile");
 
             string path = "";
@@ -79,31 +75,23 @@ namespace DaggerfallWorkshop.Game.Utility
 
             EditorGUILayout.Space();
 
-            if (selectedCompiler == 1)
-            {
-                EditorGUILayout.LabelField("Output Path:");
-                if (GUILayout.Button(outputPathIsSet ? outputPath : "<select>"))
-                    outputPath = EditorUtility.SaveFilePanel("Output Path", Application.dataPath, "Assembly", "dll");
+            EditorGUILayout.LabelField("Output Path:");
+            if (GUILayout.Button(outputPathIsSet ? outputPath : "<select>"))
+                outputPath = EditorUtility.SaveFilePanel("Output Path", Application.dataPath, "Assembly", "dll");
 
-                EditorGUILayout.Space();
-            }
+            EditorGUILayout.Space();
 
-            bool enabled = filesToCompile != null && filesToCompile.Count > 0 && (selectedCompiler == 0 || outputPathIsSet);
+            buildDebugSymbols = EditorGUILayout.ToggleLeft(new GUIContent("Debug Build", "Builds the dll in debug mode with pdb"), buildDebugSymbols);
+
+            bool enabled = filesToCompile != null && filesToCompile.Count > 0;
             EditorGUI.BeginDisabledGroup(!enabled);
 
             if (GUILayout.Button("Compile"))
             {
                 try
                 {
-                    if (selectedCompiler == 0)
-                    {
-                        Assembly assembly = Compiler.CompileSource(filesToCompile.ToArray(), false, false);
-                        Debug.Log(string.Format("Assembly {0} created", assembly.GetName().Name));
-                    }
-                    else
-                    {
-                        ModAssemblyBuilder.Compile(outputPath, false, filesToCompile.ToArray());
-                    }
+                    Assert.IsNotNull(filesToCompile);
+                    ModAssemblyBuilder.Compile(outputPath, buildDebugSymbols, filesToCompile!.ToArray());
                 }
                 catch (Exception ex)
                 {
