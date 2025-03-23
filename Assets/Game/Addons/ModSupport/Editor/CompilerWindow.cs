@@ -15,6 +15,7 @@ using System;
 using System.IO;
 using System.Collections.Generic;
 using System.Reflection;
+using NUnit.Framework;
 
 namespace DaggerfallWorkshop.Game.Utility
 {
@@ -101,7 +102,7 @@ namespace DaggerfallWorkshop.Game.Utility
                     }
                     else
                     {
-                        ModAssemblyBuilder.Compile(outputPath, filesToCompile.ToArray());
+                        ModAssemblyBuilder.Compile(outputPath, false, filesToCompile.ToArray());
                     }
                 }
                 catch (Exception ex)
@@ -118,10 +119,8 @@ namespace DaggerfallWorkshop.Game.Utility
             {
                 scrollPos = GUILayoutHelper.ScrollView(scrollPos, () =>
                 {
-
                     for (int i = 0; i < filesToCompile.Count; i++)
                     {
-
                         EditorGUILayout.Space();
 
                         GUILayoutHelper.Horizontal(() =>
@@ -144,12 +143,8 @@ namespace DaggerfallWorkshop.Game.Utility
 
                         });
                     }
-
                 });
             });
-
         }
-
-
     }
 }
