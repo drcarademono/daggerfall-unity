@@ -2,11 +2,12 @@ namespace DaggerfallWorkshop.Game.Utility.Roslyn;
 
 using System;
 using System.Collections.Generic;
+using System.Diagnostics.CodeAnalysis;
 using System.Reflection;
 using System.Linq;
 using Microsoft.CodeAnalysis;
 using Microsoft.CodeAnalysis.CSharp;
-using System.Diagnostics.CodeAnalysis;
+using Microsoft.CodeAnalysis.Emit;
 
 public sealed class Compiler
 {
@@ -55,54 +56,68 @@ public sealed class Compiler
 
     public bool CompileSource(string assemblyName, string[] sources, [NotNullWhen(true)] out Assembly? assembly, bool isDebugBuild = false)
     {
-        // Forcibly build in debug mode if we are in a standalone development build or the editor.
-        isDebugBuild = isDebugBuild || UnityEngine.Debug.isDebugBuild || UnityEngine.Application.isEditor;
-
         assembly = null;
-
-        var compilationOptions = defaultCompilationOptions.WithOptimizationLevel(isDebugBuild ? OptimizationLevel.Debug : OptimizationLevel.Release);
-
-        var syntaxTrees = sources
-            .Where(s => !string.IsNullOrWhiteSpace(s))
-            .Select(s => CSharpSyntaxTree.ParseText(s));
-
-        var compilation = CSharpCompilation.Create(
-            assemblyName,
-            syntaxTrees,
-            referenceCache.Values,
-            compilationOptions
-        );
-
-        using var peStream = new System.IO.MemoryStream();
-        using var pdbStream = new System.IO.MemoryStream();
-        var result = compilation.Emit(peStream, isDebugBuild ? pdbStream : null);
-
-        if (!result.Success)
+        try
         {
-            foreach (var diagnostic in result.Diagnostics)
+            // Forcibly build in debug mode if we are in a standalone development build or the editor.
+            isDebugBuild = isDebugBuild || UnityEngine.Debug.isDebugBuild || UnityEngine.Application.isEditor;
+
+
+            var compilationOptions = defaultCompilationOptions
+                .WithOptimizationLevel(isDebugBuild ? OptimizationLevel.Debug : OptimizationLevel.Release)
+                // Default unity settings passes -determistic compiler flag
+                .WithDeterministic(true);
+
+            var syntaxTrees = sources
+                .Where(s => !string.IsNullOrWhiteSpace(s))
+                .Select(s => CSharpSyntaxTree.ParseText(s));
+
+            var compilation = CSharpCompilation.Create(
+                assemblyName,
+                syntaxTrees,
+                referenceCache.Values,
+                compilationOptions
+            );
+
+            var emitOptions = new EmitOptions()
+                .WithDebugInformationFormat(DebugInformationFormat.PortablePdb);
+
+            using var peStream = new System.IO.MemoryStream();
+            using var pdbStream = new System.IO.MemoryStream();
+            var result = compilation.Emit(peStream, isDebugBuild ? pdbStream : null, options: emitOptions);
+
+            if (!result.Success)
             {
-                // TODO: check if the error is sufficiently informative
-                UnityEngine.Debug.LogFormat(UnityEngine.LogType.Error, UnityEngine.LogOption.NoStacktrace, null, "{0}", diagnostic.ToString());
+                foreach (var diagnostic in result.Diagnostics)
+                {
+                    // TODO: check if the error is sufficiently informative
+                    UnityEngine.Debug.LogFormat(UnityEngine.LogType.Error, UnityEngine.LogOption.NoStacktrace, null, "{0}", diagnostic.ToString());
+                }
+                return false;
             }
+
+            if (isDebugBuild)
+            {
+                peStream.Seek(0, System.IO.SeekOrigin.Begin);
+                pdbStream.Seek(0, System.IO.SeekOrigin.Begin);
+                assembly = Assembly.Load(peStream.ToArray(), pdbStream.ToArray());
+            }
+            else
+            {
+                peStream.Seek(0, System.IO.SeekOrigin.Begin);
+                assembly = Assembly.Load(peStream.ToArray());
+            }
+
+            peStream.Seek(0, System.IO.SeekOrigin.Begin);
+
+            dynamicAssemblyResolver.TryAdd(assemblyName, assembly);
+            referenceCache.TryAdd(assemblyName, MetadataReference.CreateFromStream(peStream));
+        }
+        catch (Exception e)
+        {
+            UnityEngine.Debug.LogException(e);
             return false;
         }
-
-        if (isDebugBuild)
-        {
-            peStream.Seek(0, System.IO.SeekOrigin.Begin);
-            pdbStream.Seek(0, System.IO.SeekOrigin.Begin);
-            assembly = Assembly.Load(peStream.ToArray(), pdbStream.ToArray());
-        }
-        else
-        {
-            peStream.Seek(0, System.IO.SeekOrigin.Begin);
-            assembly = Assembly.Load(peStream.ToArray());
-        }
-
-        peStream.Seek(0, System.IO.SeekOrigin.Begin);
-
-        dynamicAssemblyResolver.TryAdd(assemblyName, assembly);
-        referenceCache.TryAdd(assemblyName, MetadataReference.CreateFromStream(peStream));
         return assembly != null;
     }
 }
