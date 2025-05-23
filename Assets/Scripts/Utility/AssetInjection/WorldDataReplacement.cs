@@ -531,6 +531,9 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                 throw new System.Exception($"Block {blockName} does not have a valid Index in its JSON file.");
             }
 
+            // Grab the variant key
+            string blockKey = blockName + WorldDataVariants.NoVariant;
+
             // Check for the "Index" field and assign its value
             jsonBlockIndex = dfBlock.Value.Index;
 
@@ -538,6 +541,11 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             if (jsonBlockIndex <= nextBlockIndex)
             {
                 AssignNextIndex(blockName);
+
+                // Cache the full DFBlock
+                if (!blocks.ContainsKey(blockKey))
+                    blocks[blockKey] = dfBlock.Value;
+
                 return;
             }
 
@@ -545,6 +553,10 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             newBlockNames[jsonBlockIndex] = blockName;
             newBlockIndices[blockName] = jsonBlockIndex;
             Debug.LogFormat("Found a new DFBlock: {0}, (assigned index: {1})", blockName, jsonBlockIndex);
+
+            // Cache the full DFBlock
+            if (!blocks.ContainsKey(blockKey))
+                blocks[blockKey] = dfBlock.Value;
         }
 
         private static void AssignNextIndex(string blockName)
