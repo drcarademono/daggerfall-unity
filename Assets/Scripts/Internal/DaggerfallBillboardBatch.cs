@@ -57,7 +57,7 @@ namespace DaggerfallWorkshop
         [System.NonSerialized, HideInInspector]
         public Vector3 BlockOrigin = Vector3.zero;
 
-        [Range(0, 511)]
+        [Range(0, 2048)]
         public int TextureArchive = 504;
         [Range(0, 30)]
         public float FramesPerSecond = 0;
