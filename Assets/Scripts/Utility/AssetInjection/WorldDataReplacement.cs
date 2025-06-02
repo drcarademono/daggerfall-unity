@@ -542,7 +542,7 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                     // RMB blocks
                     foreach (string blockName in dfLocation.Exterior.ExteriorData.BlockNames)
                         if (blocksFile.GetBlockIndex(blockName) == -1)
-                            AssignNextIndex(blockName);
+                            AssignNewIndex(blockName);
 
                     // RDB blocks
                     if (dfLocation.Dungeon.Blocks != null)
@@ -551,13 +551,68 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
                         {
                             string blockName = dungeonBlock.BlockName;
                             if (blocksFile.GetBlockIndex(blockName) == -1)
-                                AssignNextIndex(blockName);
+                                AssignNewIndex(blockName);
                         }
                     }
                     return true;
                 }
             }
             return false;
+        }
+
+        public static void AssignNewIndex(string blockName)
+        {
+            string fileName = GetDFBlockReplacementFilename(blockName, WorldDataVariants.NoVariant);
+
+            int jsonBlockIndex;
+            DFBlock? dfBlock = null; // Make blockData nullable
+            TextAsset blockReplacementJsonAsset;
+
+            // Seek from loose files
+            if (File.Exists(Path.Combine(worldDataPath, fileName)))
+            {
+                string blockReplacementJson = File.ReadAllText(Path.Combine(worldDataPath, fileName));
+                dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJson);
+            }
+            // Seek from mods
+            else if (ModManager.Instance != null && ModManager.Instance.TryGetAsset(fileName, false, out blockReplacementJsonAsset))
+            {
+                dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJsonAsset.text);
+            }
+
+            // Ensure blockData was successfully assigned
+            if (!dfBlock.HasValue)
+            {
+                Debug.LogError($"Failed to load block data for blockName: {blockName}");
+                throw new System.Exception($"Block {blockName} does not have a valid Index in its JSON file.");
+            }
+
+            // Grab the variant key
+            string blockKey = blockName + WorldDataVariants.NoVariant;
+
+            // Check for the "Index" field and assign its value
+            jsonBlockIndex = dfBlock.Value.Index;
+
+            // If jsonBlockIndex is invalid (less than or equal to nextBlockIndex), use fallback method
+            if (jsonBlockIndex <= nextBlockIndex)
+            {
+                AssignNextIndex(blockName);
+
+                // Cache the full DFBlock
+                if (!blocks.ContainsKey(blockKey))
+                    blocks[blockKey] = dfBlock.Value;
+
+                return;
+            }
+
+            // Add to cache
+            newBlockNames[jsonBlockIndex] = blockName;
+            newBlockIndices[blockName] = jsonBlockIndex;
+            Debug.LogFormat("Found a new DFBlock: {0}, (assigned index: {1})", blockName, jsonBlockIndex);
+
+            // Cache the full DFBlock
+            if (!blocks.ContainsKey(blockKey))
+                blocks[blockKey] = dfBlock.Value;
         }
 
         private static void AssignNextIndex(string blockName)
