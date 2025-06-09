@@ -17,6 +17,15 @@ using DaggerfallConnect.Arena2;
 
 namespace DaggerfallWorkshop.Utility.AssetInjection
 {
+    /// <summary>
+    /// Thrown when WorldDataReplacement can’t load or parse the expected JSON for a block.
+    /// </summary>
+    public class WorldDataReplacementException : System.Exception
+    {
+        public WorldDataReplacementException(string message) : base(message) { }
+        public WorldDataReplacementException(string message, System.Exception inner) : base(message, inner) { }
+    }
+
     public struct BlockRecordKey
     {
         public int blockIndex;
@@ -572,19 +581,41 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             if (File.Exists(Path.Combine(worldDataPath, fileName)))
             {
                 string blockReplacementJson = File.ReadAllText(Path.Combine(worldDataPath, fileName));
-                dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJson);
+                try
+                {
+                    dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJson);
+                }
+                catch (System.InvalidCastException e)
+                {
+                    Debug.LogError($"Invalid JSON format for block '{blockName}': {e.Message}");
+                    throw new WorldDataReplacementException(
+                        $"Block '{blockName}' JSON could not be cast to DFBlock.", e
+                    );
+                }
             }
             // Seek from mods
             else if (ModManager.Instance != null && ModManager.Instance.TryGetAsset(fileName, false, out blockReplacementJsonAsset))
             {
-                dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJsonAsset.text);
+                try
+                {
+                    dfBlock = (DFBlock)SaveLoadManager.Deserialize(typeof(DFBlock), blockReplacementJsonAsset.text);
+                }
+                catch (System.InvalidCastException e)
+                {
+                    Debug.LogError($"Invalid JSON format for block '{blockName}': {e.Message}");
+                    throw new WorldDataReplacementException(
+                        $"Block '{blockName}' JSON could not be cast to DFBlock.", e
+                    );
+                }
             }
 
             // Ensure blockData was successfully assigned
             if (!dfBlock.HasValue)
             {
                 Debug.LogError($"Failed to load block data for blockName: {blockName}");
-                throw new System.Exception($"Block {blockName} does not have a valid Index in its JSON file.");
+                throw new WorldDataReplacementException(
+                    $"Block '{blockName}' does not have a valid Index in its JSON file."
+                );
             }
 
             // Grab the variant key
