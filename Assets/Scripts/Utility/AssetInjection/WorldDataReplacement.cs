@@ -624,14 +624,22 @@ namespace DaggerfallWorkshop.Utility.AssetInjection
             // Check for the "Index" field and assign its value
             jsonBlockIndex = dfBlock.Value.Index;
 
-            // If jsonBlockIndex is invalid (less than or equal to nextBlockIndex), use fallback method
-            if (jsonBlockIndex <= nextBlockIndex)
+            // If jsonBlockIndex is invalid (less than or equal to nextBlockIndex) or index is already taken, use fallback method
+            if (jsonBlockIndex <= nextBlockIndex
+                || newBlockNames.ContainsKey(jsonBlockIndex)
+                || newBlockIndices.ContainsKey(blockName))
             {
+                int newIndex = nextBlockIndex;
+
                 AssignNextIndex(blockName);
 
-                // Cache the full DFBlock
                 if (!blocks.ContainsKey(blockKey))
-                    blocks[blockKey] = dfBlock.Value;
+                {
+                    // Update DFBlock index
+                    DFBlock block = dfBlock.Value;
+                    block.Index = newIndex;
+                    blocks[blockKey] = block;
+                }
 
                 return;
             }
