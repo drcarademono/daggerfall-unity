@@ -957,7 +957,7 @@ namespace DaggerfallWorkshop.Game
             }
             // Open inventory window with activated loot container as remote target (if we fall through to here)
             DaggerfallUI.Instance.InventoryWindow.LootTarget = loot;
-            DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenInventoryWindow);
+            uiManager.PushWindow(DaggerfallUI.Instance.InventoryWindow);
         }
 
         void DisableEmptyCorpseContainer(GameObject go)
@@ -1087,7 +1087,8 @@ namespace DaggerfallWorkshop.Game
             if (messageBoxButton == DaggerfallMessageBox.MessageBoxButtons.Yes)
             {
                 // Open inventory window with activated private container as remote target (pre-set)
-                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenInventoryWindow);
+                UserInterfaceManager uiManager = DaggerfallUI.Instance.UserInterfaceManager;
+                uiManager.PushWindow(DaggerfallUI.Instance.InventoryWindow);
             }
             else
                 DaggerfallUI.Instance.InventoryWindow.LootTarget = null;
@@ -1136,8 +1137,9 @@ namespace DaggerfallWorkshop.Game
             }
             else
             {
+                UserInterfaceManager uiManager = DaggerfallUI.Instance.UserInterfaceManager;
                 DaggerfallUI.Instance.InventoryWindow.AllowDungeonWagonAccess();
-                DaggerfallUI.PostMessage(DaggerfallUIMessages.dfuiOpenInventoryWindow);
+                uiManager.PushWindow(DaggerfallUI.Instance.InventoryWindow);
             }
             sender.CloseWindow();
         }
