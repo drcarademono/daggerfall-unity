@@ -18,7 +18,6 @@ using DaggerfallConnect.Arena2;
 using DaggerfallWorkshop.Game.Player;
 using DaggerfallWorkshop.Game.UserInterfaceWindows;
 using DaggerfallWorkshop.Localization;
-using Mono.CSharp;
 
 namespace DaggerfallWorkshop.Utility
 {
