@@ -382,7 +382,8 @@ namespace DaggerfallWorkshop.Game.Utility
             if (cloak2 != null)
             {
                 ImageData interior2 = DaggerfallUnity.Instance.ItemHelper.GetCloakInteriorImage(cloak2);
-                DrawTexture(interior2, cloak2);
+                if (interior2.texture != null)
+                    DrawTexture(interior2, cloak2);
                 return;
             }
 
@@ -391,7 +392,8 @@ namespace DaggerfallWorkshop.Game.Utility
             if (cloak1 != null)
             {
                 ImageData interior1 = DaggerfallUnity.Instance.ItemHelper.GetCloakInteriorImage(cloak1);
-                DrawTexture(interior1, cloak1);
+                if (interior1.texture != null)
+                    DrawTexture(interior1, cloak1);
             }
         }
 
